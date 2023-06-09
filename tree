@@ -1,0 +1,13 @@
+digraph Tree {
+node [shape=box, style="filled, rounded", color="black", fontname="helvetica"] ;
+edge [fontname="helvetica"] ;
+0 [label=<Frequency of for &le; 0.118<br/>gini = 0.266<br/>samples = 10<br/>value = [3, 16]<br/>class = Non-Author>, fillcolor="#5eafea"] ;
+1 [label=<gini = 0.0<br/>samples = 6<br/>value = [0, 14]<br/>class = Non-Author>, fillcolor="#399de5"] ;
+0 -> 1 [labeldistance=2.5, labelangle=45, headlabel="True"] ;
+2 [label=<s.d._sentence_length &le; 2.71<br/>gini = 0.48<br/>samples = 4<br/>value = [3, 2]<br/>class = Author>, fillcolor="#f6d5bd"] ;
+0 -> 2 [labeldistance=2.5, labelangle=-45, headlabel="False"] ;
+3 [label=<gini = 0.0<br/>samples = 2<br/>value = [3, 0]<br/>class = Author>, fillcolor="#e58139"] ;
+2 -> 3 ;
+4 [label=<gini = 0.0<br/>samples = 2<br/>value = [0, 2]<br/>class = Non-Author>, fillcolor="#399de5"] ;
+2 -> 4 ;
+}

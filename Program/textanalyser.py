@@ -1,20 +1,21 @@
 import os
 import re
 import numpy as np
-import random
 import matplotlib.pyplot as plt
-
-#Modules used for Random Forest Classifier
-from sklearn.tree import export_graphviz, DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
-
-#Modules used for the generation of a sample Tree
 from IPython.display import Image
 from pathlib import Path
 import graphviz
+from sklearn.tree import export_graphviz
+
+N_ESTIMATORS = 1500
+MAX_DEPTH = 3
+N_FEATURES = 10
+
 def text_stats(folder_path):
+    """This function computes the text statistics."""
     # create a list to store the variable for each essay
     stats = []
 
@@ -95,90 +96,87 @@ def text_stats(folder_path):
             stats.append(output)
     return stats
 
+def train_random_forest_classifier(expectedauthor_data, nonexpectedauthor_data):
+    """This function trains a random forest classifier model."""
+    expectedauthor_labels = np.zeros(len(expectedauthor_data)) # 0 represents author
+    nonexpectedauthor_labels = np.ones(len(nonexpectedauthor_data)) # 1 represents non-author
+    data = np.concatenate((expectedauthor_data, nonexpectedauthor_data), axis=0)
+    labels = np.concatenate((expectedauthor_labels, nonexpectedauthor_labels), axis=0)
+    indices = np.random.permutation(len(data))
+    data = data[indices]
+    labels = labels[indices]
+    train_data, test_data, train_labels, test_labels = train_test_split(data, labels, test_size=0.2)
+    rf = RandomForestClassifier(n_estimators=N_ESTIMATORS, max_depth=MAX_DEPTH)
+    rf.fit(train_data, train_labels)
+    return rf, train_data, test_data, test_labels
 
-expectedauthor_data = text_stats("/workspaces/codespaces-jupyter/Author")
-expectedauthor_data = np.array(expectedauthor_data)
+def predict_labels(rf, sample_features):
+    """This function predicts the labels for the given features."""
+    class_labels=["Author", "Non-Author"]
+    predicted_labels = rf.predict(sample_features)
+    predicted_labels = [class_labels[int(predicted_label)] for predicted_label in predicted_labels]
+    return predicted_labels
 
-expectedauthor_labels = np.zeros(len(expectedauthor_data)) # 0 represents author
-nonexpectedauthor_data = text_stats("/workspaces/codespaces-jupyter/Non-Author")
-nonexpectedauthor_data = np.array(nonexpectedauthor_data)
+def plot_feature_importances(rf, feature_names):
+    """This function plots the feature importances."""
+    importances = rf.feature_importances_
+    indices = np.argsort(importances)[::-1]
+    plt.figure(figsize=(12, 6))
+    plt.title(f"Top {N_FEATURES} Feature Importances")
+    plt.bar(range(N_FEATURES), importances[indices][:N_FEATURES], color="r", align="center")
+    plt.xticks(range(N_FEATURES), [feature_names[i] for i in indices][:N_FEATURES], fontsize = 20, rotation=90)
+    plt.xlim([-1, N_FEATURES])
+    plt.tight_layout()
+    plt.show()
 
-#This part of the program plots a graph using the two datasets
-# Select only  two columns (mean and standard deviation)
-mean_lengths1 = expectedauthor_data[:, 2]
-std_lengths1 = expectedauthor_data[:, 3]
-mean_lengths2 = nonexpectedauthor_data[:, 2]
-std_lengths2 = nonexpectedauthor_data[:, 3]
+def evaluate_model(rf, test_data, test_labels):
+    """This function evaluates a trained model."""
+    pred_labels = rf.predict(test_data)
+    label_names = ['Non-Author', 'Author']
+    pred_labels = np.array([label_names[int(label)] for label in pred_labels])
+    test_labels = np.array([label_names[int(label)] for label in test_labels])
+    accuracy = accuracy_score(test_labels, pred_labels)
+    return accuracy, pred_labels, test_labels
 
-# Create a scatter plot with different colors for the two arrays
-plt.scatter(mean_lengths1, std_lengths1, color='blue', label='Author')
-plt.scatter(mean_lengths2, std_lengths2, color='red', label='Non-Author')
+def print_classification(rf, sample_features):
+    """This function prints the classification made by the model."""
+    if len(sample_features) != 0: 
+        class_labels = predict_labels(rf, sample_features)
+        for class_name in class_labels:
+            print(class_name)
 
-# Add labels, title, and legend
-plt.xlabel('Mean Length')
-plt.ylabel('Standard Deviation of Length')
-plt.title('Scatter Plot of Sentence Length')
-plt.legend()
+def main():
+    """The main function to run the program."""
+    expectedauthor_data = text_stats("/workspaces/TextAnalyzer/Author")
+    expectedauthor_data = np.array(expectedauthor_data)
+    
+    nonexpectedauthor_data = text_stats("/workspaces/TextAnalyzer/Non-Author")
+    nonexpectedauthor_data = np.array(nonexpectedauthor_data)
 
-# Display the plot
-plt.show()
+    rf, train_data, test_data, test_labels = train_random_forest_classifier(expectedauthor_data, nonexpectedauthor_data)
 
-#This part of the program generates the random forest classifier model
-nonexpectedauthor_labels = np.ones(len(nonexpectedauthor_data)) # 1 represents non-author
-# These are sample the data that are not from the same author. The standard deviation 
-data = np.concatenate((expectedauthor_data, nonexpectedauthor_data), axis=0)
-labels = np.concatenate((expectedauthor_labels, nonexpectedauthor_labels), axis=0)
-indices = np.random.permutation(len(data))
-data = data[indices]
-labels = labels[indices]
-train_data, test_data, train_labels, test_labels = train_test_split(data, labels, test_size=0.2)
-rf = RandomForestClassifier(n_estimators=1500, max_depth=3)
+    print(f"Amount of training data: {len(train_data)}")
+    print(f"Amount of testing data: {len(test_data)}")
 
-print("Amount of training data:  " + str(len(train_labels)))
-print("Amount of testing data:  " + str(len(test_labels)))
+    accuracy, pred_labels, test_labels = evaluate_model(rf, test_data, test_labels)
+    
+    print("Predicted labels:\n", pred_labels)
+    print("Actual labels:\n", test_labels)
 
+    print(f"Accuracy of the random forest classifier: {accuracy}")
 
-rf.fit(train_data, train_labels)
-
-pred_labels = rf.predict(test_data)
-label_names = ['Non-Author', 'Author']
-
-pred_labels = np.array([label_names[int(label)] for label in pred_labels])
-test_labels = np.array([label_names[int(label)] for label in test_labels])
-
-print("Predicted labels:\n", pred_labels)
-print("Actual labels:\n", test_labels)
-
-accuracy = accuracy_score(test_labels, pred_labels)
-print(f"Accuracy of the random forest classifier: {accuracy}")
-
-estimator = rf.estimators_[0]
-dot_data = export_graphviz(estimator, out_file=None, 
+    estimator = rf.estimators_[0]
+    dot_data = export_graphviz(estimator, out_file=None, 
                 feature_names=["mean_word_length", "s.d._word_length", "mean_sentence_length", "s.d._sentence_length", "mean_paragraph_length", "s.d._paragraph_length", "Frequency of a", "Frequency of an", "Frequency of the", "Frequency of in", "Frequency of on", "Frequency of at", "Frequency of to", "Frequency of for", "Frequency of of", "Frequency of with", "Frequency of by", "Frequency of as", "Frequency of is", "Frequency of was", "Frequency of were", "Frequency of be", "Frequency of been", "Frequency of being", "Frequency of that", "Frequency of which", "Frequency of who", "Frequency of whom", "Frequency of whose", "Frequency of this", "Frequency of these", "Frequency of those", "Frequency of such", "Frequency of like", "Frequency of about", "Frequency of after", "Frequency of before", "Frequency of from", "Frequency of through", "Frequency of until", "Frequency of unless", "Frequency of since", "Frequency of while", "Frequency of although", "Frequency of even", "Frequency of just", "Frequency of only", "Frequency of not", "Frequency of no", "Frequency of neither", "Frequency of nor"],
                 class_names=["Author", "Non-Author"],
                 filled=True, rounded=True, special_characters=True)
-graph = graphviz.Source(dot_data)
-graph.render("tree")
+    graph = graphviz.Source(dot_data)
+    graph.render("tree")
 
-sample_features = np.array(text_stats("/workspaces/codespaces-jupyter/Unlabelled Data"))
-if len(os.listdir("/workspaces/codespaces-jupyter/Unlabelled Data")) != 0: #Check if file is empty
-    class_labels=["Author", "Non-Author"]
-    predicted_labels = rf.predict(sample_features)
-    for predicted_label in predicted_labels:
-        class_name = class_labels[int(predicted_label)]
-        print(class_name) #This prints the classification made by the model of the text file(s) in the folder
+    sample_features = np.array(text_stats("/workspaces/codespaces-jupyter/Unlabelled Data"))
+    print_classification(rf, sample_features)
 
+    feature_names=["mean_wl", "s.d._wl", "mean_sl", "s.d._sl", "mean_pl", "s.d.pl", "freq. of a", "freq. of an", "freq. of the", "freq. of in", "freq. of on", "freq. of at", "freq. of to", "freq. of for", "freq. of of", "freq. of with", "freq. of by", "freq. of as", "freq. of is", "freq. of was", "freq. of were", "freq. of be", "freq. of been", "freq. of being", "freq. of that", "freq. of which", "freq. of who", "freq. of whom", "freq. of whose", "freq. of this", "freq. of these", "freq. of those", "freq. of such", "freq. of like", "freq. of about", "freq. of after", "freq. of before", "freq. of from", "freq. of through", "freq. of until", "freq. of unless", "freq. of since", "freq. of while", "freq. of although", "freq. of even", "freq. of just", "freq. of only", "freq. of not", "freq. of no", "freq. of neither", "freq. of nor"]
 
-#This shows the features importance of each variable
-importances = rf.feature_importances_
-indices = np.argsort(importances)[::-1]
-feature_names=["mean_wl", "s.d._wl", "mean_sl", "s.d._sl", "mean_pl", "s.d.pl", "freq. of a", "freq. of an", "freq. of the", "freq. of in", "freq. of on", "freq. of at", "freq. of to", "freq. of for", "freq. of of", "freq. of with", "freq. of by", "freq. of as", "freq. of is", "freq. of was", "freq. of were", "freq. of be", "freq. of been", "freq. of being", "freq. of that", "freq. of which", "freq. of who", "freq. of whom", "freq. of whose", "freq. of this", "freq. of these", "freq. of those", "freq. of such", "freq. of like", "freq. of about", "freq. of after", "freq. of before", "freq. of from", "freq. of through", "freq. of until", "freq. of unless", "freq. of since", "freq. of while", "freq. of although", "freq. of even", "freq. of just", "freq. of only", "freq. of not", "freq. of no", "freq. of neither", "freq. of nor"]
-
-n_features = 10 # Number of top features to show
-plt.figure(figsize=(12, 6))
-plt.title("Top {} Feature Importances".format(n_features))
-plt.bar(range(n_features), importances[indices][:n_features], color="r", align="center")
-plt.xticks(range(n_features), [feature_names[i] for i in indices][:n_features], fontsize = 20, rotation=90)
-plt.xlim([-1, n_features])
-plt.tight_layout()
-plt.show()
+if __name__ == "__main__":
+    main()
