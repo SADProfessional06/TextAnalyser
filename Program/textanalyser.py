@@ -7,7 +7,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 from IPython.display import Image
 from pathlib import Path
-import graphviz
 from sklearn.tree import export_graphviz
 
 N_ESTIMATORS = 1500
@@ -18,12 +17,13 @@ def text_stats(folder_path):
     """This function computes the text statistics."""
     # create a list to store the variable for each essay
     stats = []
+    file_names = []
 
     # loop through all the files in the folder
     for filename in os.listdir(folder_path):
-        # check if the file is a text file
         if filename.endswith(".txt"):
             file_path = os.path.join(folder_path, filename)
+            file_names.append(filename)  # store file name
             with open(file_path, "r") as f:
                 text = f.read()
 
@@ -49,6 +49,10 @@ def text_stats(folder_path):
                     # split the sentence into words
                     words = sentence.split()
 
+                    # skip sentence if it contains no words
+                    if not words:
+                        continue
+
                     # calculate the length of each word and store it in word_lengths
                     word_lengths += [len(word) for word in words]
                     # calculate the number of words in the sentence and store it in word_counts
@@ -56,6 +60,11 @@ def text_stats(folder_path):
 
                     # calculate the length of the sentence in characters and store it in sentence_lengths
                     sentence_lengths.append(len(sentence))
+                
+                # skip paragraph if it contains no sentences
+                if not word_lengths or not word_counts or not sentence_lengths:
+                    continue
+
                 # calculate the average word length for the paragraph and store it in avg_word_lengths
                 avg_word_lengths.append(np.mean(word_lengths))
 
@@ -79,10 +88,10 @@ def text_stats(folder_path):
                               "such", "like", "about", "after", "before", "from", "through", "until", "unless", "since",
                               "while", "although", "even", "just", "only", "not", "no", "neither", "nor"]
             total_words = sum(avg_word_counts)
-            function_word_counts = [text.count (fw)for fw in function_words]
+            function_word_counts = [text.count(fw) for fw in function_words]
             function_word_frequencies = [fw_count / total_words for fw_count in function_word_counts]
+
             #Create a list of all the data rounding up the first 6 values to 2 decimal place and the frequency to 6
-            #
             output = [
                 round(np.mean(avg_word_lengths), 2),
                 round(std_word_length, 2),
@@ -94,10 +103,16 @@ def text_stats(folder_path):
             for fw_frequency in function_word_frequencies:
                 output.append(round(fw_frequency, 6))
             stats.append(output)
-    return stats
+    return stats, file_names
 
 def train_random_forest_classifier(expectedauthor_data, nonexpectedauthor_data):
     """This function trains a random forest classifier model."""
+    # store file names
+    expectedauthor_files = expectedauthor_data[1]
+    nonexpectedauthor_files = nonexpectedauthor_data[1]
+    # keep only features for data
+    expectedauthor_data = expectedauthor_data[0]
+    nonexpectedauthor_data = nonexpectedauthor_data[0]
     expectedauthor_labels = np.zeros(len(expectedauthor_data)) # 0 represents author
     nonexpectedauthor_labels = np.ones(len(nonexpectedauthor_data)) # 1 represents non-author
     data = np.concatenate((expectedauthor_data, nonexpectedauthor_data), axis=0)
@@ -108,7 +123,10 @@ def train_random_forest_classifier(expectedauthor_data, nonexpectedauthor_data):
     train_data, test_data, train_labels, test_labels = train_test_split(data, labels, test_size=0.2)
     rf = RandomForestClassifier(n_estimators=N_ESTIMATORS, max_depth=MAX_DEPTH)
     rf.fit(train_data, train_labels)
-    return rf, train_data, test_data, test_labels
+    all_files = expectedauthor_files + nonexpectedauthor_files
+    train_files, test_files = train_test_split(all_files, test_size=0.2)
+
+    return rf, train_data, test_data, test_labels, train_files, test_files
 
 def predict_labels(rf, sample_features):
     """This function predicts the labels for the given features."""
@@ -147,36 +165,44 @@ def print_classification(rf, sample_features):
 
 def main():
     """The main function to run the program."""
-    expectedauthor_data = text_stats("/workspaces/TextAnalyzer/Author")
-    expectedauthor_data = np.array(expectedauthor_data)
-    
+    expectedauthor_data = text_stats("/workspaces/TextAnalyzer/Author")    
     nonexpectedauthor_data = text_stats("/workspaces/TextAnalyzer/Non-Author")
-    nonexpectedauthor_data = np.array(nonexpectedauthor_data)
 
-    rf, train_data, test_data, test_labels = train_random_forest_classifier(expectedauthor_data, nonexpectedauthor_data)
+    rf, train_data, test_data, test_labels, train_files, test_files = train_random_forest_classifier(expectedauthor_data, nonexpectedauthor_data)
+
+    print("Training data files:")
+    for file in train_files:
+        print(file)
+
+    print("Testing data files:")
+    for file in test_files:
+        print(file)
+
 
     print(f"Amount of training data: {len(train_data)}")
     print(f"Amount of testing data: {len(test_data)}")
 
     accuracy, pred_labels, test_labels = evaluate_model(rf, test_data, test_labels)
-    
+
+    print("Test data files with predicted and actual labels:")
+    for file, pred, actual in zip(test_files, pred_labels, test_labels):
+        print(f"File: {file}, Predicted: {pred}, Actual: {actual}")
+
     print("Predicted labels:\n", pred_labels)
     print("Actual labels:\n", test_labels)
 
     print(f"Accuracy of the random forest classifier: {accuracy}")
 
-    estimator = rf.estimators_[0]
-    dot_data = export_graphviz(estimator, out_file=None, 
-                feature_names=["mean_word_length", "s.d._word_length", "mean_sentence_length", "s.d._sentence_length", "mean_paragraph_length", "s.d._paragraph_length", "Frequency of a", "Frequency of an", "Frequency of the", "Frequency of in", "Frequency of on", "Frequency of at", "Frequency of to", "Frequency of for", "Frequency of of", "Frequency of with", "Frequency of by", "Frequency of as", "Frequency of is", "Frequency of was", "Frequency of were", "Frequency of be", "Frequency of been", "Frequency of being", "Frequency of that", "Frequency of which", "Frequency of who", "Frequency of whom", "Frequency of whose", "Frequency of this", "Frequency of these", "Frequency of those", "Frequency of such", "Frequency of like", "Frequency of about", "Frequency of after", "Frequency of before", "Frequency of from", "Frequency of through", "Frequency of until", "Frequency of unless", "Frequency of since", "Frequency of while", "Frequency of although", "Frequency of even", "Frequency of just", "Frequency of only", "Frequency of not", "Frequency of no", "Frequency of neither", "Frequency of nor"],
-                class_names=["Author", "Non-Author"],
-                filled=True, rounded=True, special_characters=True)
-    graph = graphviz.Source(dot_data)
-    graph.render("tree")
-
-    sample_features = np.array(text_stats("/workspaces/codespaces-jupyter/Unlabelled Data"))
-    print_classification(rf, sample_features)
+    sample_features = np.array(text_stats("/workspaces/TextAnalyzer/Unlabelled Data"))
+    if len(sample_features[0]) != 0:
+        print_classification(rf, sample_features)
+    else:
+        print("No unlabelled data to classify.")
 
     feature_names=["mean_wl", "s.d._wl", "mean_sl", "s.d._sl", "mean_pl", "s.d.pl", "freq. of a", "freq. of an", "freq. of the", "freq. of in", "freq. of on", "freq. of at", "freq. of to", "freq. of for", "freq. of of", "freq. of with", "freq. of by", "freq. of as", "freq. of is", "freq. of was", "freq. of were", "freq. of be", "freq. of been", "freq. of being", "freq. of that", "freq. of which", "freq. of who", "freq. of whom", "freq. of whose", "freq. of this", "freq. of these", "freq. of those", "freq. of such", "freq. of like", "freq. of about", "freq. of after", "freq. of before", "freq. of from", "freq. of through", "freq. of until", "freq. of unless", "freq. of since", "freq. of while", "freq. of although", "freq. of even", "freq. of just", "freq. of only", "freq. of not", "freq. of no", "freq. of neither", "freq. of nor"]
+    
+    # Calling the plot_feature_importances function to plot the graph
+    plot_feature_importances(rf, feature_names)
 
 if __name__ == "__main__":
     main()
